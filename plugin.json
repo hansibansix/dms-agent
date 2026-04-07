@@ -1,0 +1,17 @@
+{
+    "$schema": "https://github.com/AvengeMedia/DankMaterialShell/raw/refs/heads/master/PLUGINS/plugin-schema.json",
+    "id": "dmsAgent",
+    "name": "DMS Agent",
+    "description": "AI desktop assistant powered by Claude",
+    "version": "0.3.0",
+    "license": "MIT",
+    "author": "francis",
+    "icon": "smart_toy",
+    "type": "widget",
+    "capabilities": ["slideout", "ai", "agent"],
+    "component": "./DmsAgent.qml",
+    "settings": "./DmsAgentSettings.qml",
+    "requires_dms": ">=1.4.0",
+    "requires": ["bash", "curl", "xdg-open", "notify-send", "claude"],
+    "permissions": ["settings_read", "settings_write"]
+}
