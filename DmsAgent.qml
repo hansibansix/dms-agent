@@ -113,34 +113,18 @@ PluginComponent {
     }
 
     horizontalBarPill: Component {
-        Row {
-            spacing: Theme.spacingXS
-            DankIcon {
-                name: AgentService.busy ? "hourglass_top" : "smart_toy"
-                color: AgentService.busy ? "#FF9800" : Theme.primary
-                size: root.iconSize; anchors.verticalCenter: parent.verticalCenter
-            }
-            StyledText {
-                anchors.verticalCenter: parent.verticalCenter
-                text: AgentService.busy ? "Working..." : "Agent"
-                color: Theme.surfaceText; font.pixelSize: Theme.fontSizeSmall
-            }
+        DankIcon {
+            name: AgentService.busy ? "hourglass_top" : "smart_toy"
+            color: AgentService.busy ? "#FF9800" : Theme.primary
+            size: root.iconSize
         }
     }
 
     verticalBarPill: Component {
-        Column {
-            spacing: 2
-            DankIcon {
-                name: AgentService.busy ? "hourglass_top" : "smart_toy"
-                color: AgentService.busy ? "#FF9800" : Theme.primary
-                size: root.iconSize; anchors.horizontalCenter: parent.horizontalCenter
-            }
-            StyledText {
-                anchors.horizontalCenter: parent.horizontalCenter
-                text: AgentService.busy ? "..." : "AI"
-                color: Theme.surfaceText; font.pixelSize: Theme.fontSizeSmall
-            }
+        DankIcon {
+            name: AgentService.busy ? "hourglass_top" : "smart_toy"
+            color: AgentService.busy ? "#FF9800" : Theme.primary
+            size: root.iconSize
         }
     }
 
