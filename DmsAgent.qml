@@ -16,7 +16,37 @@ PluginComponent {
         AgentService.claudeModel = pluginData.claudeModel || "haiku";
         AgentService.maxTokens = parseInt(pluginData.maxTokens) || 1024;
         AgentService.extendedThinking = pluginData.extendedThinking === true;
+        AgentService.fontFamily = pluginData.fontFamily || "";
+        AgentService.fontSize = parseInt(pluginData.fontSize) || 13;
         if (pluginData.systemPrompt) AgentService.systemPrompt = pluginData.systemPrompt;
+    }
+
+    // Fullscreen transparent layer that catches clicks anywhere outside the
+    // agent panel and dismisses the popup. Sits on the same Top layer; the
+    // agentPanel is declared after it so it's mapped on top, meaning clicks
+    // INSIDE the panel area still reach the panel and only OUTSIDE clicks
+    // land on this surface's MouseArea.
+    PanelWindow {
+        id: dimmer
+        screen: agentPanel.screen
+        visible: agentPanel.isVisible
+        color: "transparent"
+
+        anchors.top: true
+        anchors.left: true
+        anchors.right: true
+        anchors.bottom: true
+
+        WlrLayershell.layer: WlrLayershell.Top
+        WlrLayershell.namespace: "dms:agent:bg"
+        WlrLayershell.exclusiveZone: -1
+        WlrLayershell.keyboardFocus: WlrKeyboardFocus.None
+
+        MouseArea {
+            anchors.fill: parent
+            acceptedButtons: Qt.LeftButton | Qt.RightButton | Qt.MiddleButton
+            onPressed: agentPanel.hide()
+        }
     }
 
     PanelWindow {
@@ -41,7 +71,7 @@ PluginComponent {
         screen: root.parentScreen || (Quickshell.screens.length > 0 ? Quickshell.screens[0] : null)
         color: "transparent"
 
-        WlrLayershell.layer: WlrLayershell.Top
+        WlrLayershell.layer: WlrLayershell.Overlay
         WlrLayershell.namespace: "dms:agent"
         WlrLayershell.exclusiveZone: 0
         WlrLayershell.keyboardFocus: isVisible ? WlrKeyboardFocus.OnDemand : WlrKeyboardFocus.None

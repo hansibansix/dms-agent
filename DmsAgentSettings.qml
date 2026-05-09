@@ -80,6 +80,33 @@ PluginSettings {
                 placeholder: "You are a helpful desktop assistant..."
                 defaultValue: ""
             }
+
+            StyledText {
+                width: parent.width
+                text: "Appearance"
+                font.pixelSize: Theme.fontSizeMedium
+                font.weight: Font.Bold
+                color: Theme.surfaceText
+                topPadding: Theme.spacingS
+            }
+
+            StringSetting {
+                settingKey: "fontFamily"
+                label: "Font"
+                description: "Font family for chat text. Leave empty for system default."
+                placeholder: "e.g. Inter, Roboto, sans-serif"
+                defaultValue: ""
+            }
+
+            SliderSetting {
+                settingKey: "fontSize"
+                label: "Font Size"
+                description: "Chat text size in pixels"
+                defaultValue: 13
+                minimum: 10
+                maximum: 20
+                unit: "px"
+            }
         }
     }
 

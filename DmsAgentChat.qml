@@ -1,7 +1,9 @@
 import QtQuick
 import QtQuick.Layouts
 import QtQuick.Effects
+import Quickshell
 import qs.Common
+import qs.Services
 import qs.Widgets
 import "markdown2html.js" as Md
 
@@ -9,6 +11,14 @@ Item {
     id: chatRoot
 
     signal escapePressed()
+
+    function copyCodeBlock(rawMarkdown, index) {
+        const code = Md.extractCodeBlock(rawMarkdown, index);
+        if (!code) return;
+        Quickshell.execDetached(["wl-copy", code]);
+        if (typeof ToastService !== "undefined" && ToastService.showInfo)
+            ToastService.showInfo("Copied", "Code copied to clipboard");
+    }
 
     // --- Input Card (anchored to bottom) ---
     Rectangle {
@@ -49,13 +59,49 @@ Item {
                         anchors.verticalCenter: parent.verticalCenter
                     }
 
-                    Keys.onReturnPressed: function(event) {
-                        if (event.modifiers & Qt.ShiftModifier) event.accepted = false;
-                        else { event.accepted = true; sendCurrentMessage(); }
-                    }
-
-                    Keys.onEscapePressed: function(event) {
-                        event.accepted = true; chatRoot.escapePressed();
+                    Keys.onPressed: function(event) {
+                        // 1) Dropdown navigation takes priority.
+                        if (modelDropdown.visible) {
+                            const n = modelDropdown.itemCount;
+                            if (event.key === Qt.Key_Up)   { modelDropdown.currentIndex = (modelDropdown.currentIndex - 1 + n) % n; event.accepted = true; return; }
+                            if (event.key === Qt.Key_Down) { modelDropdown.currentIndex = (modelDropdown.currentIndex + 1) % n;     event.accepted = true; return; }
+                            if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter) { modelDropdown.applySelection(); event.accepted = true; return; }
+                            if (event.key === Qt.Key_Escape) { modelDropdown.visible = false; event.accepted = true; return; }
+                        }
+                        if (historyDropdown.visible) {
+                            const m = historyList.count;
+                            if (m > 0) {
+                                if (event.key === Qt.Key_Up)   { historyList.currentIndex = (historyList.currentIndex - 1 + m) % m; historyList.positionViewAtIndex(historyList.currentIndex, ListView.Contain); event.accepted = true; return; }
+                                if (event.key === Qt.Key_Down) { historyList.currentIndex = (historyList.currentIndex + 1) % m;     historyList.positionViewAtIndex(historyList.currentIndex, ListView.Contain); event.accepted = true; return; }
+                                if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter) { historyDropdown.applySelection(); event.accepted = true; return; }
+                            }
+                            if (event.key === Qt.Key_Escape) { historyDropdown.visible = false; event.accepted = true; return; }
+                        }
+                        // 2) Ctrl shortcuts.
+                        if (event.modifiers & Qt.ControlModifier) {
+                            switch (event.key) {
+                            case Qt.Key_N: AgentService.clearMessages(); messageModel.clear(); event.accepted = true; return;
+                            case Qt.Key_R: historyDropdown.toggle(); event.accepted = true; return;
+                            case Qt.Key_M: modelDropdown.toggle();   event.accepted = true; return;
+                            case Qt.Key_T: AgentService.extendedThinking = !AgentService.extendedThinking; event.accepted = true; return;
+                            }
+                        }
+                        // 3) Send / newline on Enter.
+                        if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter) {
+                            if (event.modifiers & Qt.ShiftModifier) {
+                                event.accepted = false; // let TextEdit insert newline
+                            } else {
+                                sendCurrentMessage();
+                                event.accepted = true;
+                            }
+                            return;
+                        }
+                        // 4) Esc cascade (cancel busy → close panel).
+                        if (event.key === Qt.Key_Escape) {
+                            event.accepted = true;
+                            if (AgentService.busy) { AgentService.cancelRequest(); return; }
+                            chatRoot.escapePressed();
+                        }
                     }
                 }
             }
@@ -82,7 +128,7 @@ Item {
                             DankIcon { name: modelDropdown.visible ? "expand_less" : "expand_more"; color: Theme.surfaceVariantText; size: 14; anchors.verticalCenter: parent.verticalCenter }
                         }
 
-                        MouseArea { id: modelDropArea; anchors.fill: parent; hoverEnabled: true; onClicked: modelDropdown.visible = !modelDropdown.visible }
+                        MouseArea { id: modelDropArea; anchors.fill: parent; hoverEnabled: true; onClicked: modelDropdown.toggle() }
                     }
 
                     // Think
@@ -110,7 +156,7 @@ Item {
                         width: 26; height: 26; radius: 13
                         color: historyArea.containsMouse || historyDropdown.visible ? Theme.withAlpha(Theme.surfaceVariant, 0.3) : "transparent"
                         DankIcon { anchors.centerIn: parent; name: "history"; color: Theme.surfaceVariantText; size: 16 }
-                        MouseArea { id: historyArea; anchors.fill: parent; hoverEnabled: true; onClicked: { AgentService.loadHistory(); historyDropdown.visible = !historyDropdown.visible; } }
+                        MouseArea { id: historyArea; anchors.fill: parent; hoverEnabled: true; onClicked: historyDropdown.toggle() }
                     }
 
                     Item { Layout.fillWidth: true }
@@ -175,14 +221,36 @@ Item {
         color: Theme.surfaceContainerHighest; border.width: 1; border.color: Theme.outlineVariant
         z: 20
 
+        readonly property var models: [
+            { id: "haiku",  label: "Haiku",  desc: "Fast" },
+            { id: "sonnet", label: "Sonnet", desc: "Balanced" },
+            { id: "opus",   label: "Opus",   desc: "Best" }
+        ]
+        readonly property int itemCount: models.length
+        property int currentIndex: 0
+
+        function toggle() {
+            if (!visible) {
+                const i = models.findIndex(m => m.id === AgentService.claudeModel);
+                currentIndex = i >= 0 ? i : 0;
+            }
+            visible = !visible;
+        }
+        function applySelection() {
+            if (currentIndex < 0 || currentIndex >= models.length) return;
+            AgentService.claudeModel = models[currentIndex].id;
+            visible = false;
+        }
+
         Column {
             id: modelCol; anchors.top: parent.top; anchors.topMargin: 4
             anchors.left: parent.left; anchors.right: parent.right
             Repeater {
-                model: [{ id: "haiku", label: "Haiku", desc: "Fast" }, { id: "sonnet", label: "Sonnet", desc: "Balanced" }, { id: "opus", label: "Opus", desc: "Best" }]
+                model: modelDropdown.models
                 Rectangle {
                     width: modelCol.width; height: 32; radius: 8
-                    color: optArea.containsMouse ? Theme.withAlpha(Theme.surfaceVariant, 0.3) : "transparent"
+                    color: (optArea.containsMouse || index === modelDropdown.currentIndex) ? Theme.withAlpha(Theme.surfaceVariant, 0.4) : "transparent"
+                    Behavior on color { ColorAnimation { duration: 100 } }
                     RowLayout {
                         anchors.fill: parent; anchors.leftMargin: 12; anchors.rightMargin: 12; spacing: 6
                         Text { text: modelData.label; font.pixelSize: 12; font.weight: AgentService.claudeModel === modelData.id ? Font.Bold : Font.Normal; color: AgentService.claudeModel === modelData.id ? Theme.surfaceText : Theme.surfaceVariantText }
@@ -190,44 +258,234 @@ Item {
                         Item { Layout.fillWidth: true }
                         DankIcon { visible: AgentService.claudeModel === modelData.id; name: "check"; color: Theme.primary; size: 14 }
                     }
-                    MouseArea { id: optArea; anchors.fill: parent; hoverEnabled: true; onClicked: { AgentService.claudeModel = modelData.id; modelDropdown.visible = false; } }
+                    MouseArea {
+                        id: optArea
+                        anchors.fill: parent
+                        hoverEnabled: true
+                        onEntered: modelDropdown.currentIndex = index
+                        onClicked: { modelDropdown.currentIndex = index; modelDropdown.applySelection(); }
+                    }
                 }
             }
         }
     }
 
     // --- History Dropdown (outside input card, z on top) ---
+    function formatRelativeTime(timestamp) {
+        if (!timestamp) return ""
+        const diff = Date.now() - timestamp
+        const sec = Math.floor(diff / 1000)
+        if (sec < 60) return "just now"
+        const min = Math.floor(sec / 60)
+        if (min < 60) return min + "m ago"
+        const hr = Math.floor(min / 60)
+        if (hr < 24) return hr + "h ago"
+        const day = Math.floor(hr / 24)
+        if (day < 7) return day + "d ago"
+        if (day < 30) return Math.floor(day / 7) + "w ago"
+        return new Date(timestamp).toLocaleDateString(undefined, { month: "short", day: "numeric" })
+    }
+
     Rectangle {
-        id: historyDropdown; visible: false
-        anchors.bottom: inputCard.top; anchors.bottomMargin: 6
-        anchors.left: parent.left; anchors.right: parent.right
-        anchors.top: parent.top; anchors.topMargin: 8
-        radius: 12; clip: true
-        color: Theme.surfaceContainerHighest; border.width: 1; border.color: Theme.outlineVariant
+        id: historyDropdown
+        visible: false
+        anchors.bottom: inputCard.top; anchors.bottomMargin: 8
+        anchors.left: parent.left; anchors.leftMargin: 8
+        anchors.right: parent.right; anchors.rightMargin: 8
+        anchors.top: parent.top; anchors.topMargin: 16
+        radius: 16
+        clip: true
+        color: Theme.surfaceContainerHigh
+        border.width: 1
+        border.color: Theme.withAlpha(Theme.outlineVariant, 0.6)
         z: 20
 
-        Text {
-            visible: AgentService.history.length === 0
-            text: "No conversations yet"; color: Theme.surfaceVariantText; font.pixelSize: 12
-            anchors.centerIn: parent
+        function toggle() {
+            if (!visible) {
+                AgentService.loadHistory();
+                historyList.currentIndex = 0;
+            }
+            visible = !visible;
+        }
+        function applySelection() {
+            const idx = historyList.currentIndex;
+            if (idx < 0 || idx >= AgentService.history.length) return;
+            messageModel.clear();
+            AgentService.resumeSession(AgentService.history[idx].id);
+            visible = false;
         }
 
-        ListView {
-            anchors.fill: parent; anchors.margins: 4; clip: true; spacing: 0
-            visible: AgentService.history.length > 0
-            model: AgentService.history
-            delegate: Rectangle {
-                width: ListView.view.width; height: 36; radius: 8
-                color: hArea.containsMouse ? Theme.withAlpha(Theme.surfaceVariant, 0.3) : "transparent"
-                RowLayout {
-                    anchors.fill: parent; anchors.leftMargin: 12; anchors.rightMargin: 12; spacing: 8
-                    Text { text: modelData.title || "Chat"; font.pixelSize: 12; color: Theme.surfaceText; elide: Text.ElideRight; Layout.fillWidth: true }
+        ColumnLayout {
+            anchors.fill: parent
+            anchors.margins: 10
+            spacing: 6
+
+            // Header
+            Item {
+                Layout.fillWidth: true
+                Layout.preferredHeight: 28
+
+                Row {
+                    anchors.left: parent.left
+                    anchors.verticalCenter: parent.verticalCenter
+                    spacing: 8
+
+                    DankIcon {
+                        name: "history"
+                        color: Theme.surfaceVariantText
+                        size: 16
+                        anchors.verticalCenter: parent.verticalCenter
+                    }
                     Text {
-                        text: { var d = new Date(modelData.date); return d.toLocaleDateString(undefined, {month:"short", day:"numeric"}) }
-                        font.pixelSize: 10; color: Theme.surfaceVariantText
+                        text: "Conversations"
+                        font.pixelSize: 13
+                        font.weight: Font.Medium
+                        color: Theme.surfaceText
+                        anchors.verticalCenter: parent.verticalCenter
                     }
                 }
-                MouseArea { id: hArea; anchors.fill: parent; hoverEnabled: true; onClicked: { messageModel.clear(); AgentService.resumeSession(modelData.id); historyDropdown.visible = false; } }
+
+                Text {
+                    visible: AgentService.history.length > 0
+                    anchors.right: parent.right
+                    anchors.verticalCenter: parent.verticalCenter
+                    text: AgentService.history.length + (AgentService.history.length === 1 ? " session" : " sessions")
+                    font.pixelSize: 10
+                    color: Theme.surfaceVariantText
+                }
+            }
+
+            Rectangle {
+                Layout.fillWidth: true
+                height: 1
+                color: Theme.withAlpha(Theme.outlineVariant, 0.4)
+            }
+
+            // Empty state
+            Item {
+                Layout.fillWidth: true
+                Layout.fillHeight: true
+                visible: AgentService.history.length === 0
+
+                Column {
+                    anchors.centerIn: parent
+                    spacing: 10
+
+                    DankIcon {
+                        name: "forum"
+                        size: 36
+                        color: Theme.withAlpha(Theme.surfaceVariantText, 0.5)
+                        anchors.horizontalCenter: parent.horizontalCenter
+                    }
+                    Text {
+                        text: "No conversations yet"
+                        color: Theme.surfaceVariantText
+                        font.pixelSize: 13
+                        anchors.horizontalCenter: parent.horizontalCenter
+                    }
+                    Text {
+                        text: "Past chats will appear here"
+                        color: Theme.withAlpha(Theme.surfaceVariantText, 0.6)
+                        font.pixelSize: 10
+                        anchors.horizontalCenter: parent.horizontalCenter
+                    }
+                }
+            }
+
+            // List
+            ListView {
+                id: historyList
+                Layout.fillWidth: true
+                Layout.fillHeight: true
+                visible: AgentService.history.length > 0
+                clip: true
+                spacing: 2
+                model: AgentService.history
+                boundsBehavior: Flickable.StopAtBounds
+
+                delegate: Rectangle {
+                    id: histItem
+                    width: historyList.width
+                    height: 48
+                    radius: 10
+                    readonly property bool isActive: AgentService.sessionId === modelData.id
+                    readonly property bool isFocused: index === historyList.currentIndex
+                    color: isFocused
+                        ? Theme.withAlpha(Theme.primary, 0.20)
+                        : (hArea.containsMouse
+                            ? Theme.withAlpha(Theme.surfaceVariant, 0.35)
+                            : (isActive ? Theme.withAlpha(Theme.primary, 0.08) : "transparent"))
+
+                    Behavior on color { ColorAnimation { duration: 120 } }
+
+                    // Left-edge focus indicator for keyboard navigation
+                    Rectangle {
+                        visible: histItem.isFocused
+                        anchors.left: parent.left
+                        anchors.leftMargin: 4
+                        anchors.verticalCenter: parent.verticalCenter
+                        width: 3
+                        height: parent.height - 14
+                        radius: 1.5
+                        color: Theme.primary
+                    }
+
+                    RowLayout {
+                        anchors.fill: parent
+                        anchors.leftMargin: 12
+                        anchors.rightMargin: 12
+                        spacing: 10
+
+                        DankIcon {
+                            name: histItem.isActive ? "chat" : "chat_bubble_outline"
+                            color: histItem.isActive ? Theme.primary : Theme.surfaceVariantText
+                            size: 16
+                            Layout.alignment: Qt.AlignVCenter
+                        }
+
+                        Column {
+                            Layout.fillWidth: true
+                            Layout.alignment: Qt.AlignVCenter
+                            spacing: 1
+
+                            Text {
+                                width: parent.width
+                                text: modelData.title || "Untitled"
+                                font.pixelSize: 12
+                                font.weight: histItem.isActive ? Font.Medium : Font.Normal
+                                color: Theme.surfaceText
+                                elide: Text.ElideRight
+                            }
+                            Text {
+                                text: formatRelativeTime(modelData.date)
+                                font.pixelSize: 10
+                                color: Theme.surfaceVariantText
+                            }
+                        }
+
+                        DankIcon {
+                            visible: histItem.isActive
+                            name: "check_circle"
+                            color: Theme.primary
+                            size: 14
+                            Layout.alignment: Qt.AlignVCenter
+                        }
+                    }
+
+                    MouseArea {
+                        id: hArea
+                        anchors.fill: parent
+                        hoverEnabled: true
+                        cursorShape: Qt.PointingHandCursor
+                        onEntered: historyList.currentIndex = index
+                        onClicked: {
+                            historyList.currentIndex = index
+                            messageModel.clear()
+                            AgentService.resumeSession(modelData.id)
+                            historyDropdown.visible = false
+                        }
+                    }
+                }
             }
         }
     }
@@ -326,7 +584,19 @@ Item {
                 id: uRect; anchors.right: parent.right
                 width: Math.min(parent.width * 0.8, uTxt.implicitWidth + 28)
                 height: uTxt.implicitHeight + 20; radius: 16; color: Theme.primary
-                Text { id: uTxt; anchors.fill: parent; anchors.margins: 10; anchors.leftMargin: 14; anchors.rightMargin: 14; text: content; wrapMode: Text.Wrap; color: Theme.primaryText; font.pixelSize: 13; lineHeight: 1.3 }
+                Text {
+                    id: uTxt
+                    anchors.fill: parent
+                    anchors.margins: 10
+                    anchors.leftMargin: 14
+                    anchors.rightMargin: 14
+                    text: content
+                    wrapMode: Text.Wrap
+                    color: Theme.primaryText
+                    font.family: AgentService.fontFamily || Qt.application.font.family
+                    font.pixelSize: AgentService.fontSize
+                    lineHeight: 1.3
+                }
             }
         }
     }
@@ -341,7 +611,7 @@ Item {
                 height: aTxt.implicitHeight + 20; radius: 16
                 color: Theme.surfaceContainerHigh
                 border.width: 1; border.color: Theme.withAlpha(Theme.outlineVariant, 0.5)
-                Text {
+                TextEdit {
                     id: aTxt
                     anchors.fill: parent
                     anchors.margins: 10
@@ -349,17 +619,40 @@ Item {
                     anchors.rightMargin: 14
                     text: Md.markdownToHtml(content, {
                         codeBg: Theme.surfaceContainerHighest,
+                        codeBorder: Theme.withAlpha(Theme.primary, 0.22),
+                        codeDivider: Theme.withAlpha(Theme.outlineVariant, 0.4),
                         inlineCodeBg: Theme.surfaceContainerHighest,
                         blockquoteBg: Theme.withAlpha(Theme.surfaceContainerHighest, 0.4),
-                        blockquoteBorder: Theme.outline
+                        blockquoteBorder: Theme.outline,
+                        codeFont: "monospace",
+                        codeLabelColor: Theme.surfaceVariantText,
+                        syntax: {
+                            comment: "#7E8285",
+                            string:  "#A8E0A0",
+                            number:  "#C198F6",
+                            keyword: "#FF7BAC",
+                            builtin: "#7DCFFF"
+                        }
                     })
-                    textFormat: Text.RichText
-                    wrapMode: Text.Wrap
+                    textFormat: TextEdit.RichText
+                    wrapMode: TextEdit.Wrap
                     color: Theme.surfaceText
-                    font.pixelSize: 13
-                    lineHeight: 1.4
-                    linkColor: Theme.primary
-                    onLinkActivated: link => Qt.openUrlExternally(link)
+                    font.family: AgentService.fontFamily || Qt.application.font.family
+                    font.pixelSize: AgentService.fontSize
+                    readOnly: true
+                    selectByMouse: true
+                    selectByKeyboard: true
+                    persistentSelection: true
+                    selectionColor: Theme.primary
+                    selectedTextColor: Theme.primaryText
+                    onLinkActivated: link => {
+                        if (link.indexOf("dmsagent-copy:") === 0) {
+                            const idx = parseInt(link.substring("dmsagent-copy:".length))
+                            chatRoot.copyCodeBlock(content, idx)
+                        } else {
+                            Qt.openUrlExternally(link)
+                        }
+                    }
                 }
             }
         }

@@ -2,6 +2,104 @@
 // Markdown to HTML converter for AI Assistant plugin
 // Supports headers, bold, italic, strikethrough, code blocks with language labels,
 // tables, task lists, links, blockquotes, and horizontal rules
+
+const SYNTAX_DEFAULT = {
+    comment: "#7E8285",
+    string:  "#A8E0A0",
+    number:  "#C198F6",
+    keyword: "#FF7BAC",
+    builtin: "#7DCFFF"
+};
+
+const LANGS = {
+    bash: { kw: ["if","then","else","elif","fi","for","in","do","done","while","case","esac","function","return","export","local","exit","break","continue","trap","set","read","source","alias","unalias"], builtin: ["echo","printf","cd","ls","cat","grep","sed","awk","cp","mv","rm","mkdir","rmdir","touch","chmod","chown","find","xargs","sudo","systemctl","journalctl","curl","wget","tar","git","make"], lc: "#" },
+    sh:   "bash",
+    zsh:  "bash",
+    fish: "bash",
+    js:   { kw: ["var","let","const","function","return","if","else","for","while","do","switch","case","break","continue","new","class","extends","super","this","null","undefined","true","false","typeof","instanceof","in","of","try","catch","finally","throw","async","await","yield","import","export","default","from","as"], builtin: ["console","Math","JSON","Object","Array","Promise","Date","RegExp","Number","String","Boolean","Symbol","window","document","require","module","exports"], lc: "//", bc: ["/*","*/"] },
+    javascript: "js",
+    ts: { kw: ["var","let","const","function","return","if","else","for","while","do","switch","case","break","continue","new","class","extends","super","this","null","undefined","true","false","typeof","instanceof","in","of","try","catch","finally","throw","async","await","yield","import","export","default","from","as","interface","type","enum","public","private","protected","readonly","abstract","implements","keyof","never","unknown","any","void"], builtin: ["console","Math","JSON","Object","Array","Promise","Date","RegExp","Number","String","Boolean","Symbol"], lc: "//", bc: ["/*","*/"] },
+    typescript: "ts",
+    python: { kw: ["def","class","return","if","elif","else","for","while","in","not","and","or","is","None","True","False","import","from","as","with","try","except","finally","raise","pass","break","continue","lambda","yield","global","nonlocal","async","await","del"], builtin: ["print","len","range","str","int","float","list","dict","tuple","set","map","filter","zip","sorted","enumerate","open","isinstance","type","input","abs","min","max","sum","any","all","repr","hasattr","getattr","setattr"], lc: "#" },
+    py: "python",
+    json: { kw: ["true","false","null"] },
+    qml:  { kw: ["import","property","signal","function","return","if","else","for","while","var","let","const","true","false","null","undefined","readonly","alias","component","pragma","required","default"], builtin: ["Item","Rectangle","Text","TextEdit","TextInput","Image","MouseArea","Component","Connections","Binding","Loader","ListView","Repeater","Column","Row","Grid","Flickable","ColumnLayout","RowLayout","GridLayout","Theme","Qt"], lc: "//", bc: ["/*","*/"] },
+    c:    { kw: ["int","char","short","long","float","double","void","unsigned","signed","const","static","extern","volatile","return","if","else","for","while","do","switch","case","break","continue","goto","sizeof","struct","union","enum","typedef","NULL","true","false"], lc: "//", bc: ["/*","*/"] },
+    cpp:  { kw: ["int","char","short","long","float","double","void","unsigned","signed","const","constexpr","static","extern","volatile","return","if","else","for","while","do","switch","case","break","continue","goto","sizeof","struct","union","enum","typedef","class","public","private","protected","virtual","override","final","template","typename","namespace","using","new","delete","this","nullptr","true","false","try","catch","throw","auto"], lc: "//", bc: ["/*","*/"] },
+    "c++": "cpp",
+    go:   { kw: ["func","return","if","else","for","range","break","continue","switch","case","default","package","import","var","const","type","struct","interface","map","chan","go","select","defer","fallthrough","nil","true","false"], builtin: ["fmt","println","print","len","cap","make","new","append","copy","delete","panic","recover","string","int","int32","int64","float32","float64","bool","byte","rune","error"], lc: "//", bc: ["/*","*/"] },
+    rust: { kw: ["fn","let","mut","const","static","return","if","else","for","while","loop","match","break","continue","struct","enum","impl","trait","pub","use","mod","crate","self","super","as","ref","move","where","unsafe","async","await","dyn","true","false"], builtin: ["Box","Vec","Option","Result","Some","None","Ok","Err","String","str","i32","i64","u32","u64","f32","f64","bool","char","usize","isize","println","print","format","vec"], lc: "//", bc: ["/*","*/"] },
+    rs:   "rust",
+    sql:  { kw: ["select","from","where","insert","into","values","update","set","delete","create","table","drop","alter","add","column","primary","key","foreign","references","not","null","default","index","view","join","left","right","inner","outer","on","as","and","or","in","like","between","group","by","order","having","limit","offset","union","case","when","then","else","end","distinct","exists","with"], builtin: ["int","integer","varchar","char","text","date","datetime","timestamp","boolean","bool","float","double","decimal","numeric","blob"], lc: "--", bc: ["/*","*/"] },
+    php:  { kw: ["if","else","elseif","endif","for","endfor","foreach","endforeach","while","endwhile","do","switch","endswitch","case","break","continue","default","return","exit","die","function","class","interface","trait","extends","implements","abstract","final","public","private","protected","static","const","var","namespace","use","as","new","throw","try","catch","finally","global","echo","print","include","require","include_once","require_once","yield","fn","match","readonly","enum","instanceof","clone","self","parent","this","null","true","false","and","or","xor","array","list","isset","unset","empty","declare","goto"], builtin: ["int","integer","string","bool","boolean","float","double","void","mixed","callable","iterable","object","never","count","strlen","strpos","str_replace","str_contains","str_starts_with","str_ends_with","sprintf","printf","var_dump","print_r","json_encode","json_decode","file_get_contents","file_put_contents","in_array","array_map","array_filter","array_keys","array_values","array_merge","array_push","array_pop","explode","implode","trim","substr","preg_match","preg_replace","preg_split","date","time","strtotime","intval","floatval","strval","is_array","is_string","is_int","is_null","is_object","is_callable","Exception","Throwable","ArrayObject","DateTime","DateTimeImmutable","Closure","Generator"], lc: ["//","#"], bc: ["/*","*/"] },
+    php3: "php",
+    php5: "php",
+    php7: "php",
+    php8: "php",
+    css:  { kw: ["important"], builtin: ["px","em","rem","pt","pc","ex","ch","vh","vw","vmin","vmax","%","auto","none","inherit","initial","unset","absolute","relative","fixed","static","sticky","block","inline","flex","grid"], bc: ["/*","*/"] },
+    diff: { kw: [] }
+};
+
+function _escHtml(s) {
+    return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+function _reEsc(s) {
+    return s.replace(/[\\^$.*+?()[\]{}|]/g, '\\$&');
+}
+
+function highlightCode(code, lang, palette) {
+    const c = palette || SYNTAX_DEFAULT;
+    let def = LANGS[lang];
+    if (typeof def === "string") def = LANGS[def];
+    if (!def) return _escHtml(code);
+
+    const parts = [];
+    if (def.bc) parts.push({ src: _reEsc(def.bc[0]) + "[\\s\\S]*?" + _reEsc(def.bc[1]), type: "comment" });
+    if (def.lc) {
+        const lcs = Array.isArray(def.lc) ? def.lc : [def.lc];
+        parts.push({ src: "(?:" + lcs.map(_reEsc).join("|") + ")[^\\n]*", type: "comment" });
+    }
+    parts.push({ src: '"(?:\\\\.|[^"\\\\\\n])*"',                                          type: "string" });
+    parts.push({ src: "'(?:\\\\.|[^'\\\\\\n])*'",                                          type: "string" });
+    parts.push({ src: '\\b\\d+(?:\\.\\d+)?\\b',                                            type: "number" });
+    if (def.kw && def.kw.length)      parts.push({ src: '\\b(?:' + def.kw.join('|')      + ')\\b', type: "keyword" });
+    if (def.builtin && def.builtin.length) parts.push({ src: '\\b(?:' + def.builtin.join('|') + ')\\b', type: "builtin" });
+
+    const re = new RegExp(parts.map(p => "(" + p.src + ")").join("|"), "gm");
+    let result = "";
+    let last = 0;
+    let m;
+    while ((m = re.exec(code)) !== null) {
+        if (m[0].length === 0) { re.lastIndex++; continue; }
+        result += _escHtml(code.slice(last, m.index));
+        const txt = _escHtml(m[0]);
+        let type = null;
+        for (let i = 0; i < parts.length; i++) {
+            if (m[i + 1] !== undefined) { type = parts[i].type; break; }
+        }
+        result += (type && c[type]) ? '<span style="color: ' + c[type] + '">' + txt + '</span>' : txt;
+        last = m.index + m[0].length;
+    }
+    result += _escHtml(code.slice(last));
+    return result;
+}
+
+// Look up the Nth fenced code block in raw markdown text. Used by the
+// chat UI to retrieve the original code when the user clicks a COPY link
+// in the rendered HTML, since the HTML body itself is post-processed.
+function extractCodeBlock(text, index) {
+    if (!text || typeof index !== "number") return "";
+    let i = 0;
+    let result = "";
+    text.replace(/```(?:[^\n]*\n)?([\s\S]*?)```/g, (match, code) => {
+        if (i === index) result = (code || "").replace(/^\n+|\n+$/g, '');
+        i++;
+        return match;
+    });
+    return result;
+}
+
 function markdownToHtml(text, colors) {
     if (!text) return "";
 
@@ -20,34 +118,41 @@ function markdownToHtml(text, colors) {
     let inlineIndex = 0;
     let protectedIndex = 0;
 
+    const codeFont       = c.codeFont       || "monospace";
+    const codeBorder     = c.codeBorder     || "#33808080";
+    const codeDivider    = c.codeDivider    || "#33808080";
+    const codeLabelColor = c.codeLabelColor || "#80FFFFFF";
+    const codeCopyColor  = c.codeCopyColor  || "#7DCFFF";
+
     // First, extract and replace code blocks with placeholders
     // Regex matches ```[language]\n[content]```
     let html = text.replace(/```(?:([^\n]*)\n)?([\s\S]*?)```/g, (match, lang, code) => {
-        // Trim leading and trailing blank lines only
         const trimmedCode = (code || "").replace(/^\n+|\n+$/g, '');
-        // Escape HTML entities in code
-        const escapedCode = trimmedCode.replace(/&/g, '&amp;')
-                                       .replace(/</g, '&lt;')
-                                       .replace(/>/g, '&gt;');
+        const langName = (lang || "").trim().toLowerCase();
+        const highlighted = highlightCode(trimmedCode, langName, c.syntax);
+        const blockIdx = blockIndex;
 
-        // Add language label if specified
-        const languageLabel = lang && lang.trim()
-            ? `<div style="font-size: 9px; opacity: 0.6; padding-bottom: 4px;">${lang.trim()}</div>`
+        // Header sits OUTSIDE the tinted code container — no background tint
+        // on the label/COPY line; only the code area below has the codeBg.
+        // Click on COPY is intercepted by TextEdit.onLinkActivated via the
+        // dmsagent-copy:<index> URL scheme; the QML side re-extracts the
+        // code from the original message by the given index.
+        const labelSpan = langName
+            ? `<span style="color: ${codeLabelColor}; letter-spacing: 1.5px;">${langName.toUpperCase()}</span>&nbsp;&nbsp;·&nbsp;&nbsp;`
             : '';
+        const header = `<p style="margin: 12px 0 4px 0; padding: 0; font-family: ${codeFont}; font-size: 9px;">` +
+            labelSpan +
+            `<a href="dmsagent-copy:${blockIdx}" style="color: ${codeCopyColor}; text-decoration: none; letter-spacing: 1.5px;">COPY</a>` +
+        `</p>`;
 
-        // Add consistent margins to code blocks
-        codeBlocks.push(`<div style="background-color: ${c.codeBg}; padding: 10px; margin: 8px 0;">${languageLabel}<pre style="margin: 0;"><code>${escapedCode}</code></pre></div>`);
+        codeBlocks.push(`${header}<div style="background-color: ${c.codeBg}; padding: 12px 14px; margin: 0 0 12px 0; border: 1px solid ${codeBorder}; border-radius: 8px;"><pre style="margin: 0; font-family: ${codeFont}; font-size: 12px; white-space: pre-wrap;"><code style="font-family: ${codeFont};">${highlighted}</code></pre></div>`);
         return `\x00CODEBLOCK${blockIndex++}\x00`;
     });
 
     // Extract and replace inline code
     html = html.replace(/`([^`]+)`/g, (match, code) => {
-        // Escape HTML entities in code
-        const escapedCode = code.replace(/&/g, '&amp;')
-                               .replace(/</g, '&lt;')
-                               .replace(/>/g, '&gt;');
-        // Use span with background color for highlighting.
-        inlineCode.push(`<span style="font-family: monospace; background-color: ${c.inlineCodeBg};">&nbsp;${escapedCode}&nbsp;</span>`);
+        const escapedCode = code.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+        inlineCode.push(`<span style="font-family: ${codeFont}; background-color: ${c.inlineCodeBg};">&nbsp;${escapedCode}&nbsp;</span>`);
         return `\x00INLINECODE${inlineIndex++}\x00`;
     });
 
@@ -203,10 +308,22 @@ function markdownToHtml(text, colors) {
         html = '<p>' + html + '</p>';
     }
 
-    // Restore PROTECTED blocks (Lists, Blockquotes) AFTER line break processing
+    // Restore PROTECTED blocks (Lists, Blockquotes, Tables) AFTER line break processing
     html = html.replace(/\x00PROTECTEDBLOCK(\d+)\x00/g, (match, index) => {
         return protectedBlocks[parseInt(index)];
     });
+
+    // Second pass: protected blocks may contain CODEBLOCK / INLINECODE placeholders
+    // (e.g. inline code inside table cells or list items) that didn't exist in the
+    // top-level HTML during the first restoration pass. Restore them now.
+    html = html.replace(/\x00CODEBLOCK(\d+)\x00/g, (match, index) => codeBlocks[parseInt(index)]);
+    html = html.replace(/\x00INLINECODE(\d+)\x00/g, (match, index) => inlineCode[parseInt(index)]);
+
+    // Strip <p>...</p> wrappers around <div> code blocks. The earlier line-break
+    // pass turns text + code into "<p>text</p><p><div>...</div></p>", but Qt's
+    // RichText renders <p><div>...</div></p> with an empty paragraph above the
+    // block. Pulling the div out of the paragraph removes that visual gap.
+    html = html.replace(/<p>\s*(<div[^>]*>[\s\S]*?<\/div>)\s*<\/p>/g, '$1');
 
     // Clean up the final HTML
     // Remove <br/> tags immediately before block elements
@@ -216,6 +333,8 @@ function markdownToHtml(text, colors) {
     html = html.replace(/<br\/>\s*(<blockquote[^>]*>)/g, '$1');
     html = html.replace(/<br\/>\s*(<table[^>]*>)/g, '$1');
     html = html.replace(/<br\/>\s*(<h[1-6][^>]*>)/g, '$1');
+    html = html.replace(/<br\/>\s*(<div[^>]*>)/g, '$1');
+    html = html.replace(/(<\/div>)\s*<br\/>/g, '$1');
 
     // Remove empty paragraphs
     html = html.replace(/<p>\s*<\/p>/g, '');

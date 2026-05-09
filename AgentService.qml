@@ -41,6 +41,8 @@ Singleton {
 
     property string claudeModel: "haiku"
     property bool extendedThinking: false
+    property string fontFamily: ""
+    property int fontSize: 13
     property string systemPrompt: "You are a concise desktop assistant on Linux with niri (Wayland compositor) and DankMaterialShell. " +
         "You have full tool access (Bash, Read, Write, Edit). Execute actions immediately, never ask for confirmation. " +
         "Respond in user's language. Be concise.\n\n" +
