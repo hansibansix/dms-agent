@@ -238,6 +238,7 @@ Item {
         id: messageFlick
         anchors.top: parent.top
         anchors.bottom: inputCard.top
+        anchors.topMargin: 16
         anchors.bottomMargin: 12
         anchors.left: parent.left; anchors.right: parent.right
         anchors.leftMargin: 8; anchors.rightMargin: 8
@@ -254,7 +255,7 @@ Item {
         Column {
             id: messageColumn
             width: parent.width
-            spacing: 6
+            spacing: 10
 
             // Spacer pushes messages to bottom
             Item {
@@ -266,7 +267,7 @@ Item {
             Column {
                 id: messagesContent
                 width: parent.width
-                spacing: 6
+                spacing: 10
 
                 Repeater {
                     model: ListModel { id: messageModel }
@@ -337,8 +338,29 @@ Item {
             Rectangle {
                 id: aRect; anchors.left: parent.left
                 width: Math.min(parent.width * 0.85, aTxt.implicitWidth + 28)
-                height: aTxt.implicitHeight + 20; radius: 16; color: Theme.surfaceContainer
-                Text { id: aTxt; anchors.fill: parent; anchors.margins: 10; anchors.leftMargin: 14; anchors.rightMargin: 14; text: Md.markdownToHtml(content); textFormat: Text.RichText; wrapMode: Text.Wrap; color: Theme.surfaceText; font.pixelSize: 13; lineHeight: 1.4 }
+                height: aTxt.implicitHeight + 20; radius: 16
+                color: Theme.surfaceContainerHigh
+                border.width: 1; border.color: Theme.withAlpha(Theme.outlineVariant, 0.5)
+                Text {
+                    id: aTxt
+                    anchors.fill: parent
+                    anchors.margins: 10
+                    anchors.leftMargin: 14
+                    anchors.rightMargin: 14
+                    text: Md.markdownToHtml(content, {
+                        codeBg: Theme.surfaceContainerHighest,
+                        inlineCodeBg: Theme.surfaceContainerHighest,
+                        blockquoteBg: Theme.withAlpha(Theme.surfaceContainerHighest, 0.4),
+                        blockquoteBorder: Theme.outline
+                    })
+                    textFormat: Text.RichText
+                    wrapMode: Text.Wrap
+                    color: Theme.surfaceText
+                    font.pixelSize: 13
+                    lineHeight: 1.4
+                    linkColor: Theme.primary
+                    onLinkActivated: link => Qt.openUrlExternally(link)
+                }
             }
         }
     }

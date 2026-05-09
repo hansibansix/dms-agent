@@ -3,7 +3,9 @@
 import json, os, glob, time, sys
 
 action = sys.argv[1] if len(sys.argv) > 1 else "list"
-base = os.path.expanduser("~/.claude/projects/-home-francis/")
+_home = os.path.expanduser("~")
+_project = "-" + _home.lstrip("/").replace("/", "-")
+base = os.path.join(_home, ".claude", "projects", _project) + "/"
 
 if action == "list":
     results = []

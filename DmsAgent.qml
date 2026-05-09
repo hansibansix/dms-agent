@@ -2,7 +2,6 @@ import QtQuick
 import QtQuick.Layouts
 import Quickshell
 import Quickshell.Wayland
-import Quickshell.Io
 import qs.Common
 import qs.Widgets
 import qs.Modules.Plugins
@@ -11,14 +10,6 @@ PluginComponent {
     id: root
 
     layerNamespacePlugin: "dmsAgent"
-
-    IpcHandler {
-        function toggle(): string {
-            agentPanel.toggle();
-            return agentPanel.isVisible ? "opened" : "closed";
-        }
-        target: "dmsAgent"
-    }
 
     onPluginDataChanged: {
         if (!pluginData) return;
@@ -31,35 +22,32 @@ PluginComponent {
     PanelWindow {
         id: agentPanel
 
-        property bool isVisible: false
+        readonly property string myScreenName: root.parentScreen ? root.parentScreen.name : ""
+        readonly property bool isVisible: myScreenName !== "" && AgentService.activeScreenName === myScreenName
 
-        function show() {
-            visible = true; isVisible = true; AgentService.popoutVisible = true;
-            animScale = 1.0; animOpacity = 1.0;
-        }
-        function hide() {
-            isVisible = false; AgentService.popoutVisible = false;
-            animScale = 0.92; animOpacity = 0.0;
-        }
-        function toggle() { if (isVisible) hide(); else show(); }
+        function show() { if (myScreenName) AgentService.activeScreenName = myScreenName; }
+        function hide() { if (AgentService.activeScreenName === myScreenName) AgentService.activeScreenName = ""; }
+        function toggle() { isVisible ? hide() : show(); }
 
         property real animScale: 0.92
         property real animOpacity: 0.0
 
-        visible: isVisible || hideAnim.running || scaleAnim.running
-        screen: Quickshell.screens.length > 0 ? Quickshell.screens[0] : null
-        color: "transparent"
+        onIsVisibleChanged: {
+            animScale = isVisible ? 1.0 : 0.92;
+            animOpacity = isVisible ? 1.0 : 0.0;
+        }
 
-        anchors.bottom: true
+        visible: isVisible || hideAnim.running || scaleAnim.running
+        screen: root.parentScreen || (Quickshell.screens.length > 0 ? Quickshell.screens[0] : null)
+        color: "transparent"
 
         WlrLayershell.layer: WlrLayershell.Top
         WlrLayershell.namespace: "dms:agent"
         WlrLayershell.exclusiveZone: 0
         WlrLayershell.keyboardFocus: isVisible ? WlrKeyboardFocus.OnDemand : WlrKeyboardFocus.None
-        WlrLayershell.margins.bottom: 44
 
-        implicitWidth: 660
-        implicitHeight: 740
+        implicitWidth: 900
+        implicitHeight: 950
 
         Item {
             id: animContainer
@@ -67,7 +55,16 @@ PluginComponent {
             anchors.margins: 10
             scale: agentPanel.animScale
             opacity: agentPanel.animOpacity
-            transformOrigin: Item.Bottom
+            transformOrigin: Item.Center
+
+            ElevationShadow {
+                anchors.fill: parent
+                level: Theme.elevationLevel3
+                targetRadius: 20
+                targetColor: Theme.withAlpha(Theme.surfaceContainer, 0.95)
+                borderColor: Theme.outlineVariant
+                borderWidth: 1
+            }
 
             DmsAgentChat {
                 id: agentChat
@@ -81,10 +78,7 @@ PluginComponent {
         }
 
         Behavior on animOpacity {
-            NumberAnimation {
-                id: hideAnim; duration: 200; easing.type: Easing.OutCubic
-                onRunningChanged: { if (!running && !agentPanel.isVisible) agentPanel.visible = false; }
-            }
+            NumberAnimation { id: hideAnim; duration: 200; easing.type: Easing.OutCubic }
         }
     }
 

@@ -3,9 +3,41 @@ pragma Singleton
 import QtQuick
 import Quickshell
 import Quickshell.Io
+import qs.Services
 
 Singleton {
     id: root
+
+    // Empty string = panel hidden everywhere. Otherwise, the screen name on which
+    // the per-screen DmsAgent.qml instance should display its panel. Acts as the
+    // single source of truth across all per-bar plugin instances.
+    property string activeScreenName: ""
+
+    function _focusedScreenName() {
+        const s = CompositorService.getFocusedScreen();
+        return s ? s.name : "";
+    }
+
+    function toggleOnScreen(screenName) {
+        if (!screenName) return;
+        activeScreenName = (activeScreenName === screenName) ? "" : screenName;
+    }
+
+    function toggleOnFocused() {
+        toggleOnScreen(_focusedScreenName());
+    }
+
+    function hidePanel() {
+        activeScreenName = "";
+    }
+
+    IpcHandler {
+        target: "dmsAgent"
+        function toggle(): string {
+            root.toggleOnFocused();
+            return root.popoutVisible ? "opened" : "closed";
+        }
+    }
 
     property string claudeModel: "haiku"
     property bool extendedThinking: false
@@ -34,7 +66,7 @@ Singleton {
     property bool busy: false
     property string statusText: "Ready"
     property var messages: []
-    property bool popoutVisible: false
+    readonly property bool popoutVisible: activeScreenName !== ""
     property string sessionId: ""
     property string lastCost: ""
     property var history: []
@@ -91,6 +123,7 @@ Singleton {
         messages = [];
         sessionId = "";
         lastCost = "";
+        persistSession();
     }
 
     // --- Notification ---
@@ -100,7 +133,29 @@ Singleton {
     }
 
     // --- History (reads from Claude CLI session files) ---
-    readonly property string historyScript: homeDir + "/.config/DankMaterialShell/plugins/dms-agent/history.py"
+    readonly property string historyScript: homeDir + "/.config/DankMaterialShell/plugins/dmsAgent/history.py"
+    readonly property string stateDir: homeDir + "/.local/state/DankMaterialShell/plugins/dmsAgent"
+    readonly property string sessionFilePath: stateDir + "/session.json"
+
+    FileView {
+        id: sessionFile
+        path: root.sessionFilePath
+        onLoaded: {
+            try {
+                const data = JSON.parse(sessionFile.text());
+                if (data && typeof data.sessionId === "string" && data.sessionId)
+                    root.sessionId = data.sessionId;
+            } catch (e) {}
+        }
+    }
+
+    function persistSession() {
+        const payload = JSON.stringify({ sessionId: sessionId, savedAt: Date.now() });
+        runQuietExit(
+            "mkdir -p " + shellQuote(stateDir) + " && printf %s " + shellQuote(payload) + " > " + shellQuote(sessionFilePath),
+            function() {}
+        );
+    }
 
     function loadHistory() {
         runQuietExit("python3 " + shellQuote(historyScript) + " list", function(output) {
@@ -235,7 +290,10 @@ Singleton {
             return;
         }
 
-        if (data.session_id) sessionId = data.session_id;
+        if (data.session_id) {
+            sessionId = data.session_id;
+            persistSession();
+        }
 
         if (data.total_cost_usd !== undefined) {
             lastCost = "$" + data.total_cost_usd.toFixed(4);
