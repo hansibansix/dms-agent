@@ -12,6 +12,49 @@ Item {
 
     signal escapePressed()
 
+    focus: true
+    Keys.onPressed: function(event) { handleKey(event); }
+
+    // Shared key handler for shortcuts and dropdown navigation. Called from
+    // both chatRoot (catches keys when focus is anywhere in the panel — e.g.
+    // user clicked into the assistant text) and inputField (so its own
+    // BeforeItem-priority handler can intercept arrow keys before TextEdit
+    // consumes them for cursor movement).
+    function handleKey(event) {
+        // 1) Dropdown navigation when one is open.
+        if (modelDropdown.visible) {
+            const n = modelDropdown.itemCount;
+            if (event.key === Qt.Key_Up)   { modelDropdown.currentIndex = (modelDropdown.currentIndex - 1 + n) % n; event.accepted = true; return; }
+            if (event.key === Qt.Key_Down) { modelDropdown.currentIndex = (modelDropdown.currentIndex + 1) % n;     event.accepted = true; return; }
+            if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter) { modelDropdown.applySelection(); event.accepted = true; return; }
+            if (event.key === Qt.Key_Escape) { modelDropdown.visible = false; event.accepted = true; return; }
+        }
+        if (historyDropdown.visible) {
+            const m = historyList.count;
+            if (m > 0) {
+                if (event.key === Qt.Key_Up)   { historyList.currentIndex = (historyList.currentIndex - 1 + m) % m; historyList.positionViewAtIndex(historyList.currentIndex, ListView.Contain); event.accepted = true; return; }
+                if (event.key === Qt.Key_Down) { historyList.currentIndex = (historyList.currentIndex + 1) % m;     historyList.positionViewAtIndex(historyList.currentIndex, ListView.Contain); event.accepted = true; return; }
+                if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter) { historyDropdown.applySelection(); event.accepted = true; return; }
+            }
+            if (event.key === Qt.Key_Escape) { historyDropdown.visible = false; event.accepted = true; return; }
+        }
+        // 2) Ctrl shortcuts.
+        if (event.modifiers & Qt.ControlModifier) {
+            switch (event.key) {
+            case Qt.Key_N: AgentService.clearMessages(); messageModel.clear(); event.accepted = true; return;
+            case Qt.Key_R: historyDropdown.toggle(); event.accepted = true; return;
+            case Qt.Key_M: modelDropdown.toggle();   event.accepted = true; return;
+            case Qt.Key_T: AgentService.extendedThinking = !AgentService.extendedThinking; event.accepted = true; return;
+            }
+        }
+        // 3) Esc cascade (no dropdown open).
+        if (event.key === Qt.Key_Escape) {
+            event.accepted = true;
+            if (AgentService.busy) { AgentService.cancelRequest(); return; }
+            chatRoot.escapePressed();
+        }
+    }
+
     function copyCodeBlock(rawMarkdown, index) {
         const code = Md.extractCodeBlock(rawMarkdown, index);
         if (!code) return;
@@ -60,47 +103,17 @@ Item {
                     }
 
                     Keys.onPressed: function(event) {
-                        // 1) Dropdown navigation takes priority.
-                        if (modelDropdown.visible) {
-                            const n = modelDropdown.itemCount;
-                            if (event.key === Qt.Key_Up)   { modelDropdown.currentIndex = (modelDropdown.currentIndex - 1 + n) % n; event.accepted = true; return; }
-                            if (event.key === Qt.Key_Down) { modelDropdown.currentIndex = (modelDropdown.currentIndex + 1) % n;     event.accepted = true; return; }
-                            if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter) { modelDropdown.applySelection(); event.accepted = true; return; }
-                            if (event.key === Qt.Key_Escape) { modelDropdown.visible = false; event.accepted = true; return; }
-                        }
-                        if (historyDropdown.visible) {
-                            const m = historyList.count;
-                            if (m > 0) {
-                                if (event.key === Qt.Key_Up)   { historyList.currentIndex = (historyList.currentIndex - 1 + m) % m; historyList.positionViewAtIndex(historyList.currentIndex, ListView.Contain); event.accepted = true; return; }
-                                if (event.key === Qt.Key_Down) { historyList.currentIndex = (historyList.currentIndex + 1) % m;     historyList.positionViewAtIndex(historyList.currentIndex, ListView.Contain); event.accepted = true; return; }
-                                if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter) { historyDropdown.applySelection(); event.accepted = true; return; }
-                            }
-                            if (event.key === Qt.Key_Escape) { historyDropdown.visible = false; event.accepted = true; return; }
-                        }
-                        // 2) Ctrl shortcuts.
-                        if (event.modifiers & Qt.ControlModifier) {
-                            switch (event.key) {
-                            case Qt.Key_N: AgentService.clearMessages(); messageModel.clear(); event.accepted = true; return;
-                            case Qt.Key_R: historyDropdown.toggle(); event.accepted = true; return;
-                            case Qt.Key_M: modelDropdown.toggle();   event.accepted = true; return;
-                            case Qt.Key_T: AgentService.extendedThinking = !AgentService.extendedThinking; event.accepted = true; return;
-                            }
-                        }
-                        // 3) Send / newline on Enter.
+                        chatRoot.handleKey(event);
+                        if (event.accepted) return;
+                        // Plain Enter sends, Shift+Enter inserts a newline.
+                        // Only relevant when no dropdown grabbed the key above.
                         if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter) {
                             if (event.modifiers & Qt.ShiftModifier) {
-                                event.accepted = false; // let TextEdit insert newline
+                                event.accepted = false;
                             } else {
                                 sendCurrentMessage();
                                 event.accepted = true;
                             }
-                            return;
-                        }
-                        // 4) Esc cascade (cancel busy → close panel).
-                        if (event.key === Qt.Key_Escape) {
-                            event.accepted = true;
-                            if (AgentService.busy) { AgentService.cancelRequest(); return; }
-                            chatRoot.escapePressed();
                         }
                     }
                 }
@@ -652,6 +665,10 @@ Item {
                         } else {
                             Qt.openUrlExternally(link)
                         }
+                    }
+
+                    HoverHandler {
+                        cursorShape: aTxt.hoveredLink ? Qt.PointingHandCursor : Qt.IBeamCursor
                     }
                 }
             }
