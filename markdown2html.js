@@ -129,7 +129,10 @@ function markdownToHtml(text, colors) {
     let html = text.replace(/```(?:([^\n]*)\n)?([\s\S]*?)```/g, (match, lang, code) => {
         const trimmedCode = (code || "").replace(/^\n+|\n+$/g, '');
         const langName = (lang || "").trim().toLowerCase();
-        const highlighted = highlightCode(trimmedCode, langName, c.syntax);
+        // Use <br/> for line breaks inside <pre>. Qt's RichText only extends
+        // the parent <div>'s background behind <br/>-separated lines — raw \n
+        // inside <pre> renders without the background tint past the first line.
+        const highlighted = highlightCode(trimmedCode, langName, c.syntax).replace(/\n/g, '<br/>');
         const blockIdx = blockIndex;
 
         // Header sits OUTSIDE the tinted code container — no background tint
@@ -285,21 +288,13 @@ function markdownToHtml(text, colors) {
     // Detect plain URLs and wrap them in anchor tags (but not inside existing <a> or markdown links)
     html = html.replace(/(^|[^"'>])((https?|file):\/\/[^\s<]+)/g, '$1<a href="$2">$2</a>');
 
-    // Restore code blocks and inline code BEFORE line break processing
-    // (We want newlines in code blocks to become <br> or handled by pre?)
-    // Actually, QML Text <pre> handles \n correctly?
-    // If we let \n become <br>, it might be double spacing in pre.
-    // Let's protect code blocks too if we suspect issues, but previously it was fine.
-    // Actually, let's keep code blocks as they were, handled before line breaks.
-    html = html.replace(/\x00CODEBLOCK(\d+)\x00/g, (match, index) => {
-        return codeBlocks[parseInt(index)];
-    });
-
+    // Inline code has no embedded newlines, so it's safe to restore before
+    // line-break processing.
     html = html.replace(/\x00INLINECODE(\d+)\x00/g, (match, index) => {
         return inlineCode[parseInt(index)];
     });
 
-    // Line breaks (after code blocks are restored)
+    // Line breaks
     html = html.replace(/\n\n/g, '</p><p>');
     html = html.replace(/\n/g, '<br/>');
 
@@ -313,10 +308,14 @@ function markdownToHtml(text, colors) {
         return protectedBlocks[parseInt(index)];
     });
 
-    // Second pass: protected blocks may contain CODEBLOCK / INLINECODE placeholders
-    // (e.g. inline code inside table cells or list items) that didn't exist in the
-    // top-level HTML during the first restoration pass. Restore them now.
+    // Restore code blocks LAST. They must survive the \n\n → </p><p> pass
+    // intact — otherwise a blank line inside a fenced block would split the
+    // styled <div><pre>...</pre></div> wrapper and only the first chunk would
+    // keep the header (lang label + COPY).
     html = html.replace(/\x00CODEBLOCK(\d+)\x00/g, (match, index) => codeBlocks[parseInt(index)]);
+
+    // Inline code can also appear inside protected blocks (e.g. table cells);
+    // restore any remaining placeholders now.
     html = html.replace(/\x00INLINECODE(\d+)\x00/g, (match, index) => inlineCode[parseInt(index)]);
 
     // Strip <p>...</p> wrappers around <div> code blocks. The earlier line-break
